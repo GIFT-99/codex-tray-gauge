@@ -1,0 +1,3 @@
+C:/Users/ZCA/AppData/Roaming/CherryStudio/Data/Agents/t-default/codex-tray-gauge/build/_deps/json-subbuild/CMakeFiles/json-populate.dir
+C:/Users/ZCA/AppData/Roaming/CherryStudio/Data/Agents/t-default/codex-tray-gauge/build/_deps/json-subbuild/CMakeFiles/edit_cache.dir
+C:/Users/ZCA/AppData/Roaming/CherryStudio/Data/Agents/t-default/codex-tray-gauge/build/_deps/json-subbuild/CMakeFiles/rebuild_cache.dir

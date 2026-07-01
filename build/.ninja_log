@@ -1,0 +1,17 @@
+# ninja log v7
+7	152	8045721598612036	CMakeFiles/codex-tray-gauge.dir/src/resource.rc.obj	7c47fa951aa039f0
+6	1073	8045730902992471	CMakeFiles/codex-tray-gauge.dir/src/main.cpp.obj	a6ab3e7b8f985c74
+6	1633	8045721598591969	CMakeFiles/codex-tray-gauge.dir/src/icon_renderer.cpp.obj	14fb6a9cc7727f6c
+43	1306	8045748941929348	CMakeFiles/codex-tray-gauge.dir/src/tray_app.cpp.obj	76ecd607b182dbf5
+45	1328	8045748941939347	CMakeFiles/codex-tray-gauge.dir/src/codex_client.cpp.obj	2256e9c3bee54c9a
+5	3889	8045721598586924	CMakeFiles/codex-tray-gauge.dir/src/quota_model.cpp.obj	f00317166193847a
+1328	1478	8045748954770831	codex-tray-gauge.exe	7125ffcfb17ddbf4
+4	623	8045753307434294	build.ninja	6e26ce8cc30afd25
+4	623	8045753307434294	C:/Users/ZCA/AppData/Roaming/CherryStudio/Data/Agents/t-default/codex-tray-gauge/build/cmake_install.cmake	6e26ce8cc30afd25
+4	623	8045753307434294	C:/Users/ZCA/AppData/Roaming/CherryStudio/Data/Agents/t-default/codex-tray-gauge/build/_deps/json-build/cmake_install.cmake	6e26ce8cc30afd25
+4	233	8045753307620374	codex-tray-gauge.exe	f9b5bd1dee3c1ddf
+33	1325	8045773779011623	CMakeFiles/codex-tray-gauge.dir/src/icon_renderer.cpp.obj	14fb6a9cc7727f6c
+31	1401	8045773778991630	CMakeFiles/codex-tray-gauge.dir/src/tray_app.cpp.obj	76ecd607b182dbf5
+1401	1658	8045773792696908	codex-tray-gauge.exe	f9b5bd1dee3c1ddf
+12	1253	8045784223122834	CMakeFiles/codex-tray-gauge.dir/src/icon_renderer.cpp.obj	14fb6a9cc7727f6c
+1254	1519	8045784235534781	codex-tray-gauge.exe	f9b5bd1dee3c1ddf
