@@ -4,6 +4,7 @@
 #include <atomic>
 #include <mutex>
 #include <chrono>
+#include <thread>
 #include "quota_model.h"
 
 // Portable _TRUNCATE (MSVC defines it; MinGW may not)
@@ -25,6 +26,9 @@ private:
     void updateTrayIcon();
     void updateTooltip(const std::wstring& tip);
     void showContextMenu();
+    void loadSettings();
+    void saveSettings();
+    std::wstring tr(const wchar_t* en, const wchar_t* zh) const;
 
     void requestRefresh();       // called from timer or menu
     void doRefresh();            // runs inside worker thread
@@ -32,6 +36,7 @@ private:
 
     void copyStatusToClipboard();
     void setAdaptiveTimer();
+    int  getTrayIconSize() const;
 
     HINSTANCE   m_hInst;
     HWND        m_hwnd = nullptr;
@@ -40,9 +45,12 @@ private:
     UINT_PTR    m_timerId = 0;
 
     QuotaModel  m_quota;
+    UiLanguage  m_language = UiLanguage::English;
 
     // Refresh thread guard
     std::atomic<bool> m_refreshing{false};
+    std::atomic<bool> m_closing{false};
+    std::thread m_refreshThread;
 
     // Result transfer (worker → main)
     std::mutex  m_mtx;

@@ -30,5 +30,5 @@ endif()
 
 # Generate debug symbols even in Release
 if(MSVC)
-  target_compile_options(codex-tray-gauge PRIVATE /W4)
+  target_compile_options(codex-tray-gauge PRIVATE /W4 /utf-8)
 endif()

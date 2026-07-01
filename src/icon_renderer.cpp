@@ -5,24 +5,36 @@
 #include <gdiplus.h>
 #include <algorithm>
 
-// ---------------------------------------------------------------------------
-// Colour picker  — based on REMAINING percent (not used)
-// ---------------------------------------------------------------------------
+struct IconSpec {
+    int size;
+    float cx;
+    float cy;
+    float ringR;
+    float ringThick;
+};
+
+static IconSpec makeSpec(int size) {
+    // Draw each supported tray size natively so Windows does not scale a thin source.
+    if (size <= 16) return {16, 8, 8, 5.85f, 3.4f};
+    if (size <= 20) return {20, 10, 10, 7.5f, 4.0f};
+    if (size <= 24) return {24, 12, 12, 9.25f, 4.5f};
+    if (size <= 32) return {32, 16, 16, 12.6f, 5.75f};
+    if (size <= 40) return {40, 20, 20, 16.0f, 7.0f};
+    if (size <= 48) return {48, 24, 24, 19.25f, 8.25f};
+    if (size <= 64) return {64, 32, 32, 26.0f, 10.5f};
+    return {256, 128, 128, 105.5f, 39.0f};
+}
 
 void IconRenderer::pickColors(double usedPct, uint8_t& r, uint8_t& g, uint8_t& b) {
     if (usedPct < 0) {
-        r = 100; g = 100; b = 100;  // no-data grey
+        r = 150; g = 150; b = 150;
     } else {
         double remaining = 100.0 - usedPct;
-        if (remaining >= 50.0)    { r = 0;   g = 200; b = 100; }  // green
-        else if (remaining >= 20.0) { r = 240; g = 180; b = 0;   }  // amber
-        else                    { r = 220; g = 50;  b = 50;  }  // red
+        if (remaining >= 50.0)      { r = 0;   g = 220; b = 80; }
+        else if (remaining >= 20.0) { r = 255; g = 200; b = 0;  }
+        else                        { r = 255; g = 60;  b = 60; }
     }
 }
-
-// ---------------------------------------------------------------------------
-// Drawing primitives (gfx = Gdiplus::Graphics*)
-// ---------------------------------------------------------------------------
 
 void IconRenderer::drawFullRing(void* gfx, float cx, float cy,
                                 float radius, float thickness,
@@ -47,43 +59,33 @@ void IconRenderer::drawRingSegment(void* gfx, float cx, float cy,
                 startDeg, sweepDeg);
 }
 
-void IconRenderer::drawCenterDot(void* gfx, float cx, float cy,
-                                 uint8_t r, uint8_t g, uint8_t b) {
-    auto* gr = static_cast<Gdiplus::Graphics*>(gfx);
-    float dotR = 1.5f;
-    Gdiplus::SolidBrush br(Gdiplus::Color(r, g, b));
-    gr->FillEllipse(&br, cx - dotR, cy - dotR, dotR * 2, dotR * 2);
-}
-
 void IconRenderer::drawErrorCross(void* gfx, float cx, float cy,
                                   uint8_t r, uint8_t g, uint8_t b) {
     auto* gr = static_cast<Gdiplus::Graphics*>(gfx);
-    Gdiplus::Pen pen(Gdiplus::Color(r, g, b), 2.5f);
-    float d = 5.0f;
+    Gdiplus::Pen pen(Gdiplus::Color(255, r, g, b), cx * 0.3125f);
+    pen.SetStartCap(Gdiplus::LineCapRound);
+    pen.SetEndCap(Gdiplus::LineCapRound);
+    float d = cx * 0.625f;
     gr->DrawLine(&pen, cx - d, cy - d, cx + d, cy + d);
     gr->DrawLine(&pen, cx + d, cy - d, cx - d, cy + d);
 }
 
-// ---------------------------------------------------------------------------
-// createIcon
-// ---------------------------------------------------------------------------
-
-HICON IconRenderer::createIcon(double primaryPct, double secondaryPct,
+HICON IconRenderer::createIcon(int size, double primaryPct, double secondaryPct,
                                bool isError, bool isLoading) {
-    const int SIZE = 32;
-    const float CX = SIZE / 2.0f;
-    const float CY = SIZE / 2.0f;
-    const float OUTER_R = 14.0f;
-    const float INNER_R = 8.0f;
-    const float THICK   = 4.5f;
+    (void)secondaryPct;
 
-    // Create 32-bit ARGB bitmap (top-down via negative height)
+    IconSpec s = makeSpec(size);
+    const float cx = s.cx;
+    const float cy = s.cy;
+    const float ringR = s.ringR;
+    const float ringThick = s.ringThick;
+
     BITMAPINFO bmi = {};
-    bmi.bmiHeader.biSize        = sizeof(BITMAPINFOHEADER);
-    bmi.bmiHeader.biWidth       = SIZE;
-    bmi.bmiHeader.biHeight      = -SIZE; // top-down
-    bmi.bmiHeader.biPlanes      = 1;
-    bmi.bmiHeader.biBitCount    = 32;
+    bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+    bmi.bmiHeader.biWidth = size;
+    bmi.bmiHeader.biHeight = -size;
+    bmi.bmiHeader.biPlanes = 1;
+    bmi.bmiHeader.biBitCount = 32;
     bmi.bmiHeader.biCompression = BI_RGB;
 
     void* bits = nullptr;
@@ -92,80 +94,69 @@ HICON IconRenderer::createIcon(double primaryPct, double secondaryPct,
     ReleaseDC(nullptr, screenDC);
     if (!hBmp) return nullptr;
 
-    HDC memDC = CreateCompatibleDC(nullptr);
-    HBITMAP oldBmp = static_cast<HBITMAP>(SelectObject(memDC, hBmp));
+    const int renderScale = size <= 64 ? 4 : 1;
+    const int renderSize = size * renderScale;
 
-    // GDI+ draw
-    Gdiplus::Graphics g(memDC);
+    Gdiplus::Bitmap renderBmp(renderSize, renderSize, PixelFormat32bppARGB);
+    Gdiplus::Graphics g(&renderBmp);
     g.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
+    g.SetCompositingQuality(Gdiplus::CompositingQualityHighQuality);
+    g.SetPixelOffsetMode(Gdiplus::PixelOffsetModeHighQuality);
     g.SetTextRenderingHint(Gdiplus::TextRenderingHintAntiAlias);
-    g.Clear(Gdiplus::Color(0, 0, 0, 0)); // transparent
+    g.Clear(Gdiplus::Color(0, 0, 0, 0));
+
+    const float drawCx = cx * renderScale;
+    const float drawCy = cy * renderScale;
+    const float drawRingR = ringR * renderScale;
+    const float drawRingThick = ringThick * renderScale;
 
     if (isLoading) {
-        // Dim grey rings
-        drawFullRing(&g, CX, CY, OUTER_R, THICK, 100, 100, 100, 180);
-        drawFullRing(&g, CX, CY, INNER_R, THICK, 100, 100, 100, 120);
-        drawCenterDot(&g, CX, CY, 140, 140, 140);
+        drawFullRing(&g, drawCx, drawCy, drawRingR, drawRingThick, 150, 150, 150, 150);
     } else if (isError) {
-        // Grey rings + red cross
-        drawFullRing(&g, CX, CY, OUTER_R, THICK, 100, 100, 100, 200);
-        drawFullRing(&g, CX, CY, INNER_R, THICK, 100, 100, 100, 140);
-        drawErrorCross(&g, CX, CY, 220, 80, 80);
+        drawFullRing(&g, drawCx, drawCy, drawRingR, drawRingThick, 150, 150, 150, 90);
+        drawErrorCross(&g, drawCx, drawCy, 220, 80, 80);
     } else {
-        // ---------- Outer ring (5h) ----------
-        //  Grey = used,  Coloured = remaining
-        double primaryRemaining = 100.0 - primaryPct;
-        uint8_t r1, g1, b1;
-        pickColors(primaryPct, r1, g1, b1);   // input is used%, picker uses remaining
-
-        float colorSweep1 = static_cast<float>(std::clamp(primaryRemaining, 0.0, 100.0) * 3.6);
-        if (colorSweep1 >= 360.0f) colorSweep1 = 359.99f;
-        float greySweep1 = static_cast<float>(std::clamp(primaryPct, 0.0, 100.0) * 3.6);
-        if (greySweep1 >= 360.0f) greySweep1 = 359.99f;
-
-        // Grey used segment (starts where colour ends)
-        drawRingSegment(&g, CX, CY, OUTER_R, THICK, -90.0f + colorSweep1, greySweep1, 80, 80, 80, 160);
-        // Coloured remaining segment
-        drawRingSegment(&g, CX, CY, OUTER_R, THICK, -90.0f, colorSweep1, r1, g1, b1, 255);
-
-        // ---------- Inner ring (7d) ----------
-        //  Grey = used,  Blue = remaining
-        double secondaryRemaining = 100.0 - secondaryPct;
-        float colorSweep2 = static_cast<float>(std::clamp(secondaryRemaining, 0.0, 100.0) * 3.6);
-        if (colorSweep2 >= 360.0f) colorSweep2 = 359.99f;
-        float greySweep2 = static_cast<float>(std::clamp(secondaryPct, 0.0, 100.0) * 3.6);
-        if (greySweep2 >= 360.0f) greySweep2 = 359.99f;
-
-        // Grey used segment
-        drawRingSegment(&g, CX, CY, INNER_R, THICK, -90.0f + colorSweep2, greySweep2, 80, 80, 80, 160);
-        // Blue remaining segment
-        drawRingSegment(&g, CX, CY, INNER_R, THICK, -90.0f, colorSweep2, 50, 150, 240, 255);
-
-        // Centre dot — colour follows outer-ring remaining (most critical)
-        drawCenterDot(&g, CX, CY, r1, g1, b1);
+        uint8_t r, green, b;
+        pickColors(primaryPct, r, green, b);
+        drawFullRing(&g, drawCx, drawCy, drawRingR, drawRingThick, 155, 155, 155, 55);
+        double remaining = std::clamp(100.0 - primaryPct, 0.0, 100.0);
+        if (remaining >= 99.5) {
+            drawFullRing(&g, drawCx, drawCy, drawRingR, drawRingThick, r, green, b, 255);
+        } else {
+            drawRingSegment(&g, drawCx, drawCy, drawRingR, drawRingThick,
+                            -90.0f, static_cast<float>(remaining * 3.6),
+                            r, green, b, 255);
+        }
     }
 
     g.Flush();
 
-    // HBITMAP → HICON
+    HDC memDC = CreateCompatibleDC(nullptr);
+    HBITMAP oldBmp = static_cast<HBITMAP>(SelectObject(memDC, hBmp));
+    Gdiplus::Graphics out(memDC);
+    out.SetCompositingQuality(Gdiplus::CompositingQualityHighQuality);
+    out.SetInterpolationMode(Gdiplus::InterpolationModeHighQualityBicubic);
+    out.SetPixelOffsetMode(Gdiplus::PixelOffsetModeHighQuality);
+    out.Clear(Gdiplus::Color(0, 0, 0, 0));
+    out.DrawImage(&renderBmp, 0, 0, size, size);
+    out.Flush();
+
     ICONINFO ii = {};
     ii.fIcon = TRUE;
     ii.hbmColor = hBmp;
 
-    // Monochrome mask: fill white so hbmColor alpha channel is used
     HDC hdc = GetDC(nullptr);
-    ii.hbmMask = CreateBitmap(SIZE, SIZE, 1, 1, nullptr);  // 1 bpp monochrome
+    ii.hbmMask = CreateBitmap(size, size, 1, 1, nullptr);
     HDC maskDC = CreateCompatibleDC(hdc);
-    HBITMAP oldMaskBmp = (HBITMAP)SelectObject(maskDC, ii.hbmMask);
-    RECT rc = {0, 0, SIZE, SIZE};
-    FillRect(maskDC, &rc, (HBRUSH)GetStockObject(WHITE_BRUSH));
+    HBITMAP oldMaskBmp = static_cast<HBITMAP>(SelectObject(maskDC, ii.hbmMask));
+    RECT rc = {0, 0, size, size};
+    FillRect(maskDC, &rc, static_cast<HBRUSH>(GetStockObject(WHITE_BRUSH)));
     SelectObject(maskDC, oldMaskBmp);
     DeleteDC(maskDC);
     ReleaseDC(nullptr, hdc);
 
     HICON hIcon = CreateIconIndirect(&ii);
 
-    // Cleanup
     DeleteObject(ii.hbmMask);
     SelectObject(memDC, oldBmp);
     DeleteDC(memDC);
@@ -173,10 +164,10 @@ HICON IconRenderer::createIcon(double primaryPct, double secondaryPct,
     return hIcon;
 }
 
-HICON IconRenderer::createErrorIcon() {
-    return createIcon(-1, -1, true, false);
+HICON IconRenderer::createErrorIcon(int size) {
+    return createIcon(size, -1, -1, true, false);
 }
 
-HICON IconRenderer::createLoadingIcon() {
-    return createIcon(-1, -1, false, true);
+HICON IconRenderer::createLoadingIcon(int size) {
+    return createIcon(size, -1, -1, false, true);
 }

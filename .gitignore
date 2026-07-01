@@ -1,0 +1,26 @@
+# Build outputs
+/build/
+/out/
+/.vs/
+
+# Local binaries and debug files
+/*.exe
+/*.dll
+/*.pdb
+/*.ilk
+/*.obj
+/*.lib
+/*.a
+/*.dbg
+
+# CMake generated files
+CMakeUserPresets.json
+compile_commands.json
+
+# Editor and OS files
+.vscode/
+.idea/
+*.swp
+*.tmp
+Thumbs.db
+Desktop.ini

@@ -16,7 +16,11 @@ enum {
     IDM_REFRESH = 1,
     IDM_COPY    = 2,
     IDM_EXIT    = 3,
+    IDM_LANG_EN = 4,
+    IDM_LANG_ZH = 5,
 };
+
+static constexpr const wchar_t* SETTINGS_KEY = L"Software\\CodexTrayGauge";
 
 // ---------------------------------------------------------------------------
 // s_instance for the static WndProc thunk
@@ -30,13 +34,53 @@ static TrayApp* g_app = nullptr;
 TrayApp::TrayApp(HINSTANCE hInstance)
     : m_hInst(hInstance)
 {
+    loadSettings();
     g_app = this;
 }
 
 TrayApp::~TrayApp() {
+    m_closing = true;
+    if (m_refreshThread.joinable())
+        m_refreshThread.join();
     if (m_hIcon) { DestroyIcon(m_hIcon); m_hIcon = nullptr; }
     if (m_hMenu) { DestroyMenu(m_hMenu); m_hMenu = nullptr; }
     g_app = nullptr;
+}
+
+void TrayApp::loadSettings() {
+    HKEY key = nullptr;
+    if (RegOpenKeyExW(HKEY_CURRENT_USER, SETTINGS_KEY, 0, KEY_READ, &key) != ERROR_SUCCESS)
+        return;
+
+    wchar_t value[16] = {};
+    DWORD type = REG_SZ;
+    DWORD bytes = sizeof(value);
+    if (RegQueryValueExW(key, L"Language", nullptr, &type,
+                         reinterpret_cast<LPBYTE>(value), &bytes) == ERROR_SUCCESS &&
+        type == REG_SZ) {
+        if (wcscmp(value, L"zh") == 0)
+            m_language = UiLanguage::Chinese;
+        else
+            m_language = UiLanguage::English;
+    }
+    RegCloseKey(key);
+}
+
+void TrayApp::saveSettings() {
+    HKEY key = nullptr;
+    if (RegCreateKeyExW(HKEY_CURRENT_USER, SETTINGS_KEY, 0, nullptr, 0,
+                        KEY_WRITE, nullptr, &key, nullptr) != ERROR_SUCCESS)
+        return;
+
+    const wchar_t* value = m_language == UiLanguage::Chinese ? L"zh" : L"en";
+    RegSetValueExW(key, L"Language", 0, REG_SZ,
+                   reinterpret_cast<const BYTE*>(value),
+                   static_cast<DWORD>((wcslen(value) + 1) * sizeof(wchar_t)));
+    RegCloseKey(key);
+}
+
+std::wstring TrayApp::tr(const wchar_t* en, const wchar_t* zh) const {
+    return m_language == UiLanguage::Chinese ? zh : en;
 }
 
 // ---------------------------------------------------------------------------
@@ -92,7 +136,7 @@ LRESULT TrayApp::wndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             // Update tooltip every ~15 s so countdown is fresh
             static int tick = 0;
             if (++tick % 15 == 0)
-                updateTooltip(m_quota.tooltipText());
+                updateTooltip(m_quota.tooltipText(m_language));
 
             // Adaptive refresh
             auto now = steady_clock::now();
@@ -124,6 +168,16 @@ LRESULT TrayApp::wndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         switch (LOWORD(wp)) {
         case IDM_REFRESH: requestRefresh(); break;
         case IDM_COPY:    copyStatusToClipboard(); break;
+        case IDM_LANG_EN:
+            m_language = UiLanguage::English;
+            saveSettings();
+            updateTooltip(m_quota.tooltipText(m_language));
+            break;
+        case IDM_LANG_ZH:
+            m_language = UiLanguage::Chinese;
+            saveSettings();
+            updateTooltip(m_quota.tooltipText(m_language));
+            break;
         case IDM_EXIT:    DestroyWindow(hwnd);  break;
         }
         break;
@@ -133,6 +187,7 @@ LRESULT TrayApp::wndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         break;
 
     case WM_DESTROY: {
+        m_closing = true;
         KillTimer(hwnd, m_timerId);
         NOTIFYICONDATAW nid = {};
         nid.cbSize = sizeof(nid);
@@ -154,7 +209,7 @@ LRESULT TrayApp::wndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 // ---------------------------------------------------------------------------
 
 void TrayApp::createTrayIcon() {
-    m_hIcon = IconRenderer::createLoadingIcon();
+    m_hIcon = IconRenderer::createLoadingIcon(getTrayIconSize());
 
     NOTIFYICONDATAW nid = {};
     nid.cbSize           = sizeof(nid);
@@ -163,7 +218,7 @@ void TrayApp::createTrayIcon() {
     nid.uFlags           = NIF_ICON | NIF_TIP | NIF_MESSAGE;
     nid.uCallbackMessage = WM_TRAYICON;
     nid.hIcon            = m_hIcon;
-    wcscpy_s(nid.szTip, L"Codex Quota\nLoading...");
+    wcscpy_s(nid.szTip, m_quota.tooltipText(m_language).c_str());
     Shell_NotifyIconW(NIM_ADD, &nid);
 
     // Default refresh: 60 s (will be adjusted after first read)
@@ -172,26 +227,25 @@ void TrayApp::createTrayIcon() {
 
 void TrayApp::updateTrayIcon() {
     HICON newIcon = nullptr;
+    const int iconSize = getTrayIconSize();
 
     if (m_refreshing)
-        newIcon = IconRenderer::createLoadingIcon();
+        newIcon = IconRenderer::createLoadingIcon(iconSize);
     else if (m_quota.state == QuotaState::CodexNotFound ||
              m_quota.state == QuotaState::CodexNotLoggedIn ||
              m_quota.state == QuotaState::ReadTimeout ||
              m_quota.state == QuotaState::NoQuotaData)
-        newIcon = IconRenderer::createErrorIcon();
+        newIcon = IconRenderer::createErrorIcon(iconSize);
     else if (m_quota.state == QuotaState::ReadFailed) {
-        // outer=5h(primary), inner=7d(secondary) — 显示已用百分比
-        double outer5h = m_quota.hasPreviousSuccess ? m_quota.prevPrimary.usedPercent   : -1;
-        double inner7d = m_quota.hasPreviousSuccess ? m_quota.prevSecondary.usedPercent : -1;
-        newIcon = IconRenderer::createIcon(outer5h, inner7d, false, false);
+        double used5h = m_quota.hasPreviousSuccess ? m_quota.prevPrimary.usedPercent   : -1;
+        double used7d = m_quota.hasPreviousSuccess ? m_quota.prevSecondary.usedPercent : -1;
+        newIcon = IconRenderer::createIcon(iconSize, used5h, used7d, false, false);
     } else if (m_quota.state == QuotaState::Live) {
-        // outer=5h(primary), inner=7d(secondary) — 显示已用百分比
-        double outer5h = m_quota.primary.valid   ? m_quota.primary.usedPercent   : -1;
-        double inner7d = m_quota.secondary.valid ? m_quota.secondary.usedPercent : -1;
-        newIcon = IconRenderer::createIcon(outer5h, inner7d, false, false);
+        double used5h = m_quota.primary.valid   ? m_quota.primary.usedPercent   : -1;
+        double used7d = m_quota.secondary.valid ? m_quota.secondary.usedPercent : -1;
+        newIcon = IconRenderer::createIcon(iconSize, used5h, used7d, false, false);
     } else {
-        newIcon = IconRenderer::createLoadingIcon();
+        newIcon = IconRenderer::createLoadingIcon(iconSize);
     }
 
     if (!newIcon) return;
@@ -223,18 +277,29 @@ void TrayApp::updateTooltip(const std::wstring& tip) {
 // ---------------------------------------------------------------------------
 
 void TrayApp::showContextMenu() {
-    if (!m_hMenu)
-        m_hMenu = CreatePopupMenu();
-    else {
-        // Rebuild
-        while (GetMenuItemCount(m_hMenu) > 0)
-            RemoveMenu(m_hMenu, 0, MF_BYPOSITION);
+    if (m_hMenu) {
+        DestroyMenu(m_hMenu);
+        m_hMenu = nullptr;
     }
+    m_hMenu = CreatePopupMenu();
 
-    AppendMenuW(m_hMenu, MF_STRING, IDM_REFRESH, L"Refresh now");
-    AppendMenuW(m_hMenu, MF_STRING, IDM_COPY,    L"Copy status");
+    AppendMenuW(m_hMenu, MF_STRING, IDM_REFRESH, tr(L"Refresh now", L"立即刷新").c_str());
+    AppendMenuW(m_hMenu, MF_STRING, IDM_COPY,    tr(L"Copy status", L"复制状态").c_str());
     AppendMenuW(m_hMenu, MF_SEPARATOR, 0, nullptr);
-    AppendMenuW(m_hMenu, MF_STRING, IDM_EXIT,    L"Exit");
+
+    HMENU langMenu = CreatePopupMenu();
+    AppendMenuW(langMenu,
+                MF_STRING | (m_language == UiLanguage::English ? MF_CHECKED : MF_UNCHECKED),
+                IDM_LANG_EN,
+                L"English");
+    AppendMenuW(langMenu,
+                MF_STRING | (m_language == UiLanguage::Chinese ? MF_CHECKED : MF_UNCHECKED),
+                IDM_LANG_ZH,
+                L"中文");
+    AppendMenuW(m_hMenu, MF_POPUP, reinterpret_cast<UINT_PTR>(langMenu),
+                tr(L"Language", L"语言").c_str());
+    AppendMenuW(m_hMenu, MF_SEPARATOR, 0, nullptr);
+    AppendMenuW(m_hMenu, MF_STRING, IDM_EXIT,    tr(L"Exit", L"退出").c_str());
 
     POINT pt;
     GetCursorPos(&pt);
@@ -249,13 +314,16 @@ void TrayApp::showContextMenu() {
 // ---------------------------------------------------------------------------
 
 void TrayApp::requestRefresh() {
+    if (m_closing) return;
     if (m_refreshing.exchange(true)) return;   // already running
+    if (m_refreshThread.joinable())
+        m_refreshThread.join();
 
     m_quota.state = QuotaState::Refreshing;
     updateTrayIcon();
-    updateTooltip(L"Codex Quota\nRefreshing...");
+    updateTooltip(m_quota.tooltipText(m_language));
 
-    std::thread([this]() { doRefresh(); }).detach();
+    m_refreshThread = std::thread([this]() { doRefresh(); });
 }
 
 void TrayApp::doRefresh() {
@@ -267,7 +335,10 @@ void TrayApp::doRefresh() {
         m_pendingJson    = std::move(cr.json);
         m_pendingError   = std::move(cr.error);
     }
-    PostMessageW(m_hwnd, WM_REFRESH_DONE, 0, 0);
+    if (m_closing || !IsWindow(m_hwnd) ||
+        !PostMessageW(m_hwnd, WM_REFRESH_DONE, 0, 0)) {
+        m_refreshing = false;
+    }
 }
 
 void TrayApp::onRefreshComplete() {
@@ -308,7 +379,32 @@ void TrayApp::onRefreshComplete() {
     m_refreshing = false;
     setAdaptiveTimer();
     updateTrayIcon();
-    updateTooltip(m_quota.tooltipText());
+    updateTooltip(m_quota.tooltipText(m_language));
+}
+
+// ---------------------------------------------------------------------------
+// Timer
+// ---------------------------------------------------------------------------
+
+int TrayApp::getTrayIconSize() const {
+    // Detect DPI and pick the best supported icon size for the tray.
+    // Windows tray icon size varies by taskbar setting and DPI.
+    UINT dpi = 96;
+    if (m_hwnd) {
+        // GetDpiForWindow requires Win10 1607+; fall back to device caps if unavailable.
+        dpi = GetDpiForWindow(m_hwnd);
+        if (dpi == 0) dpi = 96;
+    }
+    int logical = MulDiv(16, dpi, 96); // base tray icon is ~16 at 96 DPI
+    // Round up to nearest supported size
+    if (logical <= 16) return 16;
+    if (logical <= 20) return 20;
+    if (logical <= 24) return 24;
+    if (logical <= 32) return 32;
+    if (logical <= 40) return 40;
+    if (logical <= 48) return 48;
+    if (logical <= 64) return 64;
+    return 256;
 }
 
 // ---------------------------------------------------------------------------
@@ -316,17 +412,17 @@ void TrayApp::onRefreshComplete() {
 // ---------------------------------------------------------------------------
 
 void TrayApp::setAdaptiveTimer() {
-    int intervalSec = 300; // 5 min default
+    int intervalSec = 180; // 3 min default
 
     if (m_quota.state == QuotaState::CodexNotFound)
-        intervalSec = 600; // check again in 10 min
+        intervalSec = 180;
     else if (m_quota.state == QuotaState::ReadTimeout ||
              m_quota.state == QuotaState::ReadFailed)
         intervalSec = 60;
     else if (m_quota.primary.valid) {
         double p = m_quota.primary.remainingPercent;
-        if (p < 10.0)      intervalSec = 120;
-        else if (p < 30.0) intervalSec = 180;
+        if (p < 10.0)      intervalSec = 60;
+        else if (p < 30.0) intervalSec = 120;
     }
 
     m_nextRefreshTime = steady_clock::now() + seconds(intervalSec);
@@ -337,7 +433,7 @@ void TrayApp::setAdaptiveTimer() {
 // ---------------------------------------------------------------------------
 
 void TrayApp::copyStatusToClipboard() {
-    std::wstring text = m_quota.copyStatusText();
+    std::wstring text = m_quota.copyStatusText(m_language);
     if (text.empty()) return;
 
     if (!OpenClipboard(m_hwnd)) return;

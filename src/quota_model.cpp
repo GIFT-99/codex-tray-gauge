@@ -40,12 +40,58 @@ static double clampPct(double v) {
     return v;
 }
 
+static bool parseResetTimeFallbacks(const json& j, WindowQuota& w) {
+    static const char* relativeKeys[] = {
+        "resetsInSeconds", "resetInSeconds", "secondsUntilReset",
+        "resetAfterSeconds", "reset_after_seconds", "resetsIn"
+    };
+    static const char* keys[] = {
+        "resetsAt", "resetAt", "reset_at", "resets_at",
+        "resetTime", "reset_time", "resetsAtUnix", "resetAtUnix"
+    };
+
+    for (const char* key : relativeKeys) {
+        auto it = j.find(key);
+        if (it == j.end() || !it->is_number()) continue;
+        double seconds = it->get<double>();
+        if (seconds <= 0) continue;
+        w.resetsAt = chrono::system_clock::now() +
+            chrono::seconds(static_cast<std::int64_t>(seconds));
+        return true;
+    }
+
+    for (const char* key : keys) {
+        auto it = j.find(key);
+        if (it == j.end()) continue;
+
+        if (it->is_string()) {
+            std::tm tm = {};
+            std::istringstream ss(it->get<std::string>());
+            ss >> std::get_time(&tm, "%Y-%m-%dT%H:%M:%S");
+            if (!ss.fail()) {
+                std::time_t tt = portable_mkgmtime(&tm);
+                w.resetsAt = chrono::system_clock::from_time_t(tt);
+                return true;
+            }
+        } else if (it->is_number()) {
+            double raw = it->get<double>();
+            if (raw <= 0) continue;
+            if (raw > 100000000000.0) raw /= 1000.0;
+            w.resetsAt = chrono::system_clock::from_time_t(static_cast<std::time_t>(raw));
+            return true;
+        }
+    }
+
+    return false;
+}
+
 static bool parseWindow(const json& j, WindowQuota& w) {
     if (!j.is_object()) return false;
     auto u = j.find("usedPercent");
     if (u == j.end() || !u->is_number()) return false;
     w.usedPercent = u->get<double>();
     w.remainingPercent = clampPct(100.0 - w.usedPercent);
+    parseResetTimeFallbacks(j, w);
 
     auto ra = j.find("resetsAt");
     if (ra != j.end() && ra->is_string()) {
@@ -199,88 +245,75 @@ static std::wstring fmtHhMm(const chrono::system_clock::time_point& tp) {
     return buf;
 }
 
+static chrono::system_clock::time_point nextResetTime(const WindowQuota& primary,
+                                                      const WindowQuota& secondary) {
+    chrono::system_clock::time_point next{};
+    auto consider = [&next](const WindowQuota& w) {
+        if (!w.valid || w.resetsAt.time_since_epoch().count() == 0) return;
+        if (next.time_since_epoch().count() == 0 || w.resetsAt < next)
+            next = w.resetsAt;
+    };
+    consider(primary);
+    consider(secondary);
+    return next;
+}
+
 // ---------------------------------------------------------------------------
 // tooltip / copy
 // ---------------------------------------------------------------------------
 
-std::wstring QuotaModel::tooltipText() const {
-    std::wstring s = L"Codex Quota";
+std::wstring QuotaModel::tooltipText(UiLanguage language) const {
+    const bool zh = language == UiLanguage::Chinese;
 
-    if (state == QuotaState::CodexNotFound) {
-        s += L"\nCodex not found";
-        return s;
-    }
-    if (state == QuotaState::CodexNotLoggedIn) {
-        s += L"\nNot logged in";
-        if (!lastError.empty()) { s += L"\n"; s += std::wstring(lastError.begin(), lastError.end()); }
-        return s;
-    }
-    if (state == QuotaState::ReadTimeout) {
-        s += L"\nRead timed out";
-        return s;
-    }
-    if (state == QuotaState::NoQuotaData) {
-        s += L"\nNo quota data";
-        return s;
-    }
-    if (state == QuotaState::Loading) {
-        s += L"\nLoading...";
-        return s;
-    }
+    if (state == QuotaState::CodexNotFound)
+        return zh ? L"Codex\n未找到" : L"Codex\nNot found";
+    if (state == QuotaState::CodexNotLoggedIn)
+        return zh ? L"Codex\n未登录" : L"Codex\nNot logged in";
+    if (state == QuotaState::ReadTimeout)
+        return zh ? L"Codex\n读取超时" : L"Codex\nRead timed out";
+    if (state == QuotaState::NoQuotaData)
+        return zh ? L"Codex\n无额度数据" : L"Codex\nNo quota data";
+    if (state == QuotaState::Loading || state == QuotaState::Refreshing)
+        return zh ? L"Codex\n读取中..." : L"Codex\nLoading...";
 
-    // Live / Refreshing / ReadFailed
-    if (stale && hasPreviousSuccess) {
-        s += L"\nLast known:";
-    }
+    std::wstring s;
+    s += zh ? L"5h    " : L"5h ";
+    s += primary.valid ? fmtPct(primary.remainingPercent) : L"--";
+    s += L"\n";
+    s += zh ? L"7d    " : L"7d ";
+    s += secondary.valid ? fmtPct(secondary.remainingPercent) : L"--";
+    s += L"\n";
+    s += zh ? L"重置 " : L"Reset ";
+    s += fmtHhMm(nextResetTime(primary, secondary));
 
-    if (primary.valid) {
-        s += L"\n5h: " + fmtPct(primary.remainingPercent) + L" left";
-        if (primary.resetsAt.time_since_epoch().count() > 0)
-            s += L", resets in " + fmtCountdown(primary.resetsAt);
-    } else {
-        s += L"\n5h: --";
-    }
-
-    if (secondary.valid) {
-        s += L"\n7d: " + fmtPct(secondary.remainingPercent) + L" left";
-        if (secondary.resetsAt.time_since_epoch().count() > 0)
-            s += L", resets in " + fmtCountdown(secondary.resetsAt);
-    } else {
-        s += L"\n7d: --";
-    }
-
-    if (stale) {
-        s += L"\n(using cached data)";
-    }
-
-    s += L"\nLast refresh: " + fmtHhMm(lastRefresh);
-    if (!lastError.empty()) {
-        s += L"\n";
-        s += std::wstring(lastError.begin(), lastError.end());
-    }
+    if (stale) s += zh ? L" (缓存)" : L" (cached)";
     return s;
 }
 
-std::wstring QuotaModel::copyStatusText() const {
+std::wstring QuotaModel::copyStatusText(UiLanguage language) const {
+    const bool zh = language == UiLanguage::Chinese;
     std::wstring s;
     if (primary.valid) {
-        s += L"Codex 5h: " + fmtPct(primary.remainingPercent) + L" left";
+        s += zh ? L"Codex 5小时: " : L"Codex 5h: ";
+        s += fmtPct(primary.remainingPercent);
+        s += zh ? L" 剩余" : L" left";
         if (primary.resetsAt.time_since_epoch().count() > 0)
-            s += L", resets at " + fmtLocalTime(primary.resetsAt);
+            s += (zh ? L", 重置 " : L", resets at ") + fmtLocalTime(primary.resetsAt);
     } else {
-        s += L"Codex 5h: n/a";
+        s += zh ? L"Codex 5小时: 不可用" : L"Codex 5h: n/a";
     }
     s += L"\n";
     if (secondary.valid) {
-        s += L"Codex 7d: " + fmtPct(secondary.remainingPercent) + L" left";
+        s += zh ? L"Codex 7天: " : L"Codex 7d: ";
+        s += fmtPct(secondary.remainingPercent);
+        s += zh ? L" 剩余" : L" left";
         if (secondary.resetsAt.time_since_epoch().count() > 0)
-            s += L", resets at " + fmtLocalTime(secondary.resetsAt);
+            s += (zh ? L", 重置 " : L", resets at ") + fmtLocalTime(secondary.resetsAt);
     } else {
-        s += L"Codex 7d: n/a";
+        s += zh ? L"Codex 7天: 不可用" : L"Codex 7d: n/a";
     }
-    s += L"\nLast refresh: " + fmtLocalTime(lastRefresh);
     if (!lastError.empty()) {
-        s += L"\nError: ";
+        s += zh ? L"\n错误: " : L"\nError: ";
         s += std::wstring(lastError.begin(), lastError.end());
     }
     return s;

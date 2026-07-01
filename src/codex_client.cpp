@@ -89,6 +89,15 @@ static std::string readJsonLine(HANDLE h, DWORD timeoutMs, bool& timedOut) {
     DWORD n = 0;
     while (true) {
         if (GetTickCount64() - start > timeoutMs) { timedOut = true; return {}; }
+
+        DWORD available = 0;
+        if (!PeekNamedPipe(h, nullptr, 0, nullptr, &available, nullptr))
+            return {};
+        if (available == 0) {
+            Sleep(5);
+            continue;
+        }
+
         if (!ReadFile(h, &ch, 1, &n, nullptr) || n == 0) {
             Sleep(5);
             continue;

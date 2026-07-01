@@ -14,6 +14,11 @@ enum class QuotaState {
     NoQuotaData,
 };
 
+enum class UiLanguage {
+    English,
+    Chinese,
+};
+
 struct WindowQuota {
     bool   valid = false;
     double remainingPercent = 0.0;   // 0-100
@@ -39,6 +44,6 @@ struct QuotaModel {
     /// Returns false when the message signals an error (not-logged-in, etc.).
     bool parseFromJson(const std::string& json);
 
-    std::wstring tooltipText() const;
-    std::wstring copyStatusText() const;
+    std::wstring tooltipText(UiLanguage language) const;
+    std::wstring copyStatusText(UiLanguage language) const;
 };

@@ -1,104 +1,76 @@
-# Codex Tray Gauge
+# Codex Tray Gauge ✨
 
-Windows system tray tool that displays Codex usage quota as a dual-ring icon.
+一个放在 Windows 托盘里的 Codex 额度小挂件。  
+不用开终端，不用手动查，瞄一眼托盘图标就知道 5 小时额度还剩多少。
 
-- **Outer ring**: 7-day quota window (longer-term usage)
-- **Inner ring**: 5-hour quota window (most likely to exhaust first)
-- Ring fill shows remaining quota percentage
-- Color: green (>=50%) → yellow (>=20%) → orange (>0%) → red (0%)
+## 实际效果 👀
 
-## How it works
+托盘图标会用绿色圆环显示 5h 额度，Tooltip 里只放最常看的信息。
 
-1. Finds `codex.exe` via `CODEX_CLI_PATH` env, `%LOCALAPPDATA%\OpenAI\Codex\bin\codex.exe`, or `PATH`
-2. Spawns `codex app-server --listen stdio://` as a subprocess
-3. Sends a JSON-RPC `account/rateLimits/read` request
-4. Reads the response and parses `rateLimitsByLimitId.codex`
-5. Renders a dual-ring tray icon and a tooltip
+![托盘 Tooltip](asset/tray-tooltip.png)
 
-## Privacy
+放在其他托盘图标旁边时，它会尽量保持轻量、不抢眼。
 
-See [PRIVACY.md](./PRIVACY.md) for full details.
+![托盘图标对比](asset/tray-icons.png)
 
-This tool:
-- Only communicates with the local Codex app-server via stdio pipe
-- Does **not** read browser cookies or `~/.codex/auth.json`
-- Does **not** make any network requests
-- Does **not** save tokens, prompts, responses, or quota data to disk
-- Does **not** upload any data
+## 它能做什么 🌿
 
-## Requirements
+- 🟢 用托盘圆环显示 **5h 额度剩余比例**
+- 🧾 Tooltip 显示 **5h / 7d / 下次重置时间**
+- 🌏 支持 English / 中文
+- 🔁 自动刷新，低额度时刷新更频繁
+- 🪶 常驻后台很轻，平时基本不占资源
+- 🔒 只和本机 `codex app-server` 通信，不自己联网
 
-- Windows 10 or later
-- [Codex CLI](https://github.com/openai/codex) installed and logged in (`codex login`)
+## 使用方式 🚀
 
-## Build
+1. 安装并登录 Codex
 
-Requirements: CMake 3.16+, C++17 compiler (MSVC 2019+, GCC 10+, Clang 12+).
+2. 运行：
+
+```text
+codex-tray-gauge.exe
+```
+
+3. 右键托盘图标可以：
+
+- 立即刷新
+- 复制状态
+- 切换语言
+- 退出
+
+## 构建 🛠️
+
+需要 CMake 和 C++17 编译器。
 
 ```powershell
-# Option A: With Visual Studio
-cmake -B build
-cmake --build build --config Release
-
-# Option B: With MinGW-w64 + Ninja
-winget install Kitware.CMake Ninja-build.Ninja
-cmake -S . -B build -G "Ninja" -DCMAKE_CXX_COMPILER=g++
+cmake -S . -B build -G "Ninja" -DCMAKE_BUILD_TYPE=Release
 cmake --build build --config Release
 ```
 
-Output: `build\codex-tray-gauge.exe`
+## 隐私 🔐
 
-## Usage
+这个工具尽量保持安静：
 
-1. Launch `codex-tray-gauge.exe`
-2. A Codex icon appears in your system tray
-3. Hover to see current quota percentages and reset countdowns
-4. Right-click for menu:
-   - **Refresh now** — immediately re-read quota
-   - **Copy status** — copy quota text to clipboard
-   - **Exit** — close the tray tool
+- 不读取浏览器 cookie
+- 不读取 `~/.codex/auth.json`
+- 不保存额度、token、prompt 或 response
+- 不写日志
+- 不主动发 HTTP 请求
 
-No console window is shown. The tool runs silently in the background.
+它只保存一个设置：界面语言。
 
-### Auto-refresh
-
-The tool refreshes quota automatically:
-- Every 5 minutes normally
-- Every 3 minutes when 5h quota drops below 30%
-- Every 2 minutes when 5h quota drops below 10%
-- 1 minute after a read failure
-- Immediately when a quota window resets
-
-## Troubleshooting
-
-| Symptom | Likely cause |
-|---------|-------------|
-| Grey icon with red cross | Codex not found. Install Codex CLI and log in. |
-| "Not logged in" tooltip | Run `codex login` in terminal. |
-| "Read timed out" | Codex app-server may be slow. Try Refresh now. |
-| "No quota data" | The response structure may have changed. Check for Codex updates. |
-| Icon not updating | Internet or Codex login issue. Hover for error details. |
-
-### Checking your Codex setup
-
-```powershell
-# Is Codex installed?
-where codex
-
-# Can you log in?
-codex login
-
-# Does app-server start? (Press Ctrl+C to stop)
-codex app-server --listen stdio://
+```text
+HKCU\Software\CodexTrayGauge\Language
 ```
 
-## Known limitations
+额度数据只在内存里，退出后就没了。
 
-- If Codex changes its app-server response format, this tool will need an update
-- Does not support multiple Codex accounts
-- Quota data is not persisted between restarts
-- The icon text is minimal — hover for detailed numbers
+## 安全 🧯
 
-## License
+如果发现安全问题，请优先使用 GitHub Security Advisory。  
+不要在公开 issue 里贴 token、日志或账号信息。
 
-MIT
+## License 📄
+
+MIT. 随便用，保留版权声明即可。
