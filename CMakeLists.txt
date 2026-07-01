@@ -4,13 +4,20 @@ project(codex-tray-gauge VERSION 0.1.0 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# nlohmann/json — single-header JSON (MIT license)
-include(FetchContent)
-FetchContent_Declare(json
-  GIT_REPOSITORY https://github.com/nlohmann/json.git
-  GIT_TAG v3.11.3
-)
-FetchContent_MakeAvailable(json)
+set(VENDORED_JSON "${CMAKE_CURRENT_SOURCE_DIR}/third_party/nlohmann/json.hpp")
+if(EXISTS "${VENDORED_JSON}")
+  add_library(nlohmann_json INTERFACE)
+  add_library(nlohmann_json::nlohmann_json ALIAS nlohmann_json)
+  target_include_directories(nlohmann_json INTERFACE
+    "${CMAKE_CURRENT_SOURCE_DIR}/third_party")
+else()
+  include(FetchContent)
+  FetchContent_Declare(json
+    GIT_REPOSITORY https://github.com/nlohmann/json.git
+    GIT_TAG v3.11.3
+  )
+  FetchContent_MakeAvailable(json)
+endif()
 
 add_executable(codex-tray-gauge WIN32
   src/main.cpp

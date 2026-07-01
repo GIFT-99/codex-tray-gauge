@@ -5,7 +5,9 @@
 
 ## 实际效果 👀
 
-托盘图标会用绿色圆环显示 5h 额度，Tooltip 里只放最常看的信息，数字列也会对齐。
+托盘图标会用绿色圆环显示 5h 额度，Tooltip 里只放最常看的信息。
+
+![托盘图标](asset/tray.png)
 
 ![托盘 Tooltip](asset/tray-tooltip.png)
 
@@ -37,7 +39,12 @@ codex-tray-gauge.exe
 
 ## 构建 🛠️
 
-需要 CMake 和 C++17 编译器。
+最简单的方式：双击 `build.bat`。
+
+它会自动编译 Release，并把新的 `codex-tray-gauge.exe` 放到项目根目录。  
+项目已经带了需要的 JSON 头文件，重新生成 `build` 文件夹时不需要临时联网下载依赖。
+
+也可以手动构建：
 
 ```powershell
 cmake -S . -B build -G "Ninja" -DCMAKE_BUILD_TYPE=Release

@@ -278,22 +278,22 @@ std::wstring QuotaModel::tooltipText(UiLanguage language) const {
 
     std::wstring s;
     if (zh) {
-        s += L"5小时  ";
+        s += L"5小时： ";
         s += primary.valid ? fmtPct(primary.remainingPercent) : L"--";
         s += L"\n";
-        s += L"7天    ";
+        s += L"7天：     ";
         s += secondary.valid ? fmtPct(secondary.remainingPercent) : L"--";
         s += L"\n";
-        s += L"重置    ";
+        s += L"重置：   ";
         s += fmtHhMm(nextResetTime(primary, secondary));
     } else {
-        s += L"5h ";
+        s += L"5H:      ";
         s += primary.valid ? fmtPct(primary.remainingPercent) : L"--";
         s += L"\n";
-        s += L"7d ";
+        s += L"7D:      ";
         s += secondary.valid ? fmtPct(secondary.remainingPercent) : L"--";
         s += L"\n";
-        s += L"Reset ";
+        s += L"Reset:  ";
         s += fmtHhMm(nextResetTime(primary, secondary));
     }
 
