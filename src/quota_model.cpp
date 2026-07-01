@@ -277,14 +277,25 @@ std::wstring QuotaModel::tooltipText(UiLanguage language) const {
         return zh ? L"Codex\n读取中..." : L"Codex\nLoading...";
 
     std::wstring s;
-    s += zh ? L"5h    " : L"5h ";
-    s += primary.valid ? fmtPct(primary.remainingPercent) : L"--";
-    s += L"\n";
-    s += zh ? L"7d    " : L"7d ";
-    s += secondary.valid ? fmtPct(secondary.remainingPercent) : L"--";
-    s += L"\n";
-    s += zh ? L"重置 " : L"Reset ";
-    s += fmtHhMm(nextResetTime(primary, secondary));
+    if (zh) {
+        s += L"5小时  ";
+        s += primary.valid ? fmtPct(primary.remainingPercent) : L"--";
+        s += L"\n";
+        s += L"7天    ";
+        s += secondary.valid ? fmtPct(secondary.remainingPercent) : L"--";
+        s += L"\n";
+        s += L"重置    ";
+        s += fmtHhMm(nextResetTime(primary, secondary));
+    } else {
+        s += L"5h ";
+        s += primary.valid ? fmtPct(primary.remainingPercent) : L"--";
+        s += L"\n";
+        s += L"7d ";
+        s += secondary.valid ? fmtPct(secondary.remainingPercent) : L"--";
+        s += L"\n";
+        s += L"Reset ";
+        s += fmtHhMm(nextResetTime(primary, secondary));
+    }
 
     if (stale) s += zh ? L" (缓存)" : L" (cached)";
     return s;
