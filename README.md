@@ -37,6 +37,20 @@ codex-tray-gauge.exe
 - 切换语言
 - 退出
 
+## 开机启动 🌅
+
+想让它跟着 Windows 自动启动，右键 PowerShell 运行：
+
+```powershell
+.\install-startup.ps1
+```
+
+想取消开机启动：
+
+```powershell
+.\uninstall-startup.ps1
+```
+
 ## 构建 🛠️
 
 最简单的方式：双击 `build.bat`。
