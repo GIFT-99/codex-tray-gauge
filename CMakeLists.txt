@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(codex-tray-gauge VERSION 0.1.0 LANGUAGES CXX)
+project(codex-tray-gauge VERSION 0.1.0 LANGUAGES CXX RC)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
