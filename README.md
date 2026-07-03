@@ -14,7 +14,7 @@
 ## 它能做什么 🌿
 
 - 🟢 用托盘圆环显示 **5h 额度剩余比例**
-- 🧾 Tooltip 显示 **5h / 7d / 下次重置时间**，中文数字对齐
+- 🧾 Tooltip 显示 **5h / 7d / 下次重置时间**
 - 🌏 支持 English / 中文
 - 🔁 自动刷新，低额度时刷新更频繁
 - 🪶 常驻后台很轻，平时基本不占资源
@@ -43,12 +43,6 @@ codex-tray-gauge.exe
 
 ```powershell
 .\install-startup.ps1
-```
-
-想取消开机启动：
-
-```powershell
-.\uninstall-startup.ps1
 ```
 
 ## 构建 🛠️
